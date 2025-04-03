@@ -1,29 +1,26 @@
 import { PaymentMethod } from "../models/payment.model";
 import { Order } from '../models/order.model';
 
+interface PaymentMethodRule {
+  method: PaymentMethod;
+  maxAmount: number;
+}
+
 export class PaymentService {
-  private readonly PAYMMENT_METHODS = [
-    PaymentMethod.CREDIT,
-    PaymentMethod.PAYPAY,
-    PaymentMethod.AUPAY,
+  private readonly PAYMENT_METHODS: PaymentMethodRule[] = [
+    { method: PaymentMethod.CREDIT, maxAmount: Infinity },
+    { method: PaymentMethod.PAYPAY, maxAmount: 500000 },
+    { method: PaymentMethod.AUPAY, maxAmount: 300000 },
   ];
 
-  buildPaymentMethod(totalPrice: number) {
-    const filteredMethods = this.PAYMMENT_METHODS.filter(method => {
-      if (method === PaymentMethod.PAYPAY) {
-        // if totalPrice > 500,000 remove PAYPAY
-        return totalPrice <= 500000;
-      }
-
-      if (method === PaymentMethod.AUPAY) {
-        // if totalPrice > 300,000 remove AUPAY
-        return totalPrice <= 300000;
-      }
-
-      return !!method;
-    });
-
-    return filteredMethods.join(',');
+  buildPaymentMethod(totalPrice: number): string {
+    const price = Math.max(0, totalPrice);
+    
+    const availableMethods = this.PAYMENT_METHODS
+      .filter(rule => price <= rule.maxAmount)
+      .map(rule => rule.method);
+    
+    return availableMethods.join(',');
   }
 
   async payViaLink(order: Order) {
