@@ -1,53 +1,44 @@
-import { Order } from '../models/order.model';
-import { PaymentService } from './payment.service';
+import { Order } from "../models/order.model";
 
+import { CouponService } from "./coupon.service";
+import { PaymentService } from "./payment.service";
+import { OrderPriceCalculator } from "./order-price-calculator";
 
 export class OrderService {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly couponService: CouponService
+  ) {}
 
-  async process(order: Partial<Order>) {
-    if (!order.items?.length) {
-      throw new Error('Order items are required');
-    }
-
-    if (order.items.some(item => item.price <= 0 || item.quantity <= 0)) {
-      throw new Error('Order items are invalid');
-    }
-
-    let totalPrice = order.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-
-    if (totalPrice <= 0) {
-      throw new Error('Total price must be greater than 0');
-    }
-
-    if (order.couponId) {
-      const response = await fetch(`https://67eb7353aa794fb3222a4c0e.mockapi.io/coupons/${order.couponId}`)
-      const coupon = await response.json();
-
-      if (!coupon) {
-        throw new Error('Invalid coupon');
-      }
-
-      totalPrice -= coupon.discount;
-
-      if (totalPrice < 0) {
-        totalPrice = 0;
-      }
-    }
+  async process(order: Partial<Order>): Promise<void> {
+    let totalPrice = OrderPriceCalculator.calculateTotal(order);
+    totalPrice = await this.couponService.applyDiscount(
+      totalPrice,
+      order.couponId
+    );
 
     const orderPayload = {
       ...order,
       totalPrice,
       paymentMethod: this.paymentService.buildPaymentMethod(totalPrice),
-    }
+    };
 
-    const orderResponse = await fetch('https://67eb7353aa794fb3222a4c0e.mockapi.io/order', {
-      method: 'POST',
-      body: JSON.stringify(orderPayload),
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const orderResponse = await fetch(
+      "https://67eb7353aa794fb3222a4c0e.mockapi.io/order",
+      {
+        method: "POST",
+        body: JSON.stringify(orderPayload),
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    if (!orderResponse.ok) throw new Error("Failed to create order");
 
     const createdOrder = await orderResponse.json();
+
+    if (!createdOrder.id) {
+      throw new Error("Invalid order ID");
+    }
 
     this.paymentService.payViaLink(createdOrder);
   }
